@@ -1,0 +1,43 @@
+[relaychain]
+default_command = "../polkadot/target/release/polkadot"
+default_args = [ "-lparachain=debug" ]
+
+chain = "rococo-local"
+
+  [[relaychain.nodes]]
+  name = "alice"
+  validator = true
+
+  [[relaychain.nodes]]
+  name = "bob"
+  validator = true
+
+  [[relaychain.nodes]]
+  name = "charlie"
+  validator = true
+
+  [[relaychain.nodes]]
+  name = "dave"
+  validator = true
+
+[[parachains]]
+id = 1282
+chain = "moonbase-local"
+cumulus_based = true
+
+  [parachains.collator]
+  name = "alith"
+  chain = "moonbase-local"
+  command = "../moonbeam/moonbeam"
+  args = ["-lparachain=debug"]
+
+[[parachains]]
+id = 2000
+cumulus_based = true
+
+  [parachains.collator]
+  name = "parachain-2000-collator"
+  command = "../custom/target/release/parachain-template-node"
+  args = ["-lparachain=debug"]
+
+
