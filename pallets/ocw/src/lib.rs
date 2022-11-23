@@ -25,7 +25,7 @@ use sp_std::vec::Vec;
 use hex;
 
 pub const KEY_TYPE: KeyTypeId = KeyTypeId(*b"ocwd");
-const HTTP_GRID_REMOTE_REQUEST: &str = "https://safe-retreat-69216.herokuapp.com/robonomics";
+const HTTP_GRID_REMOTE_REQUEST: &str = "http://drex-env.eba-jkxuyqbq.us-east-1.elasticbeanstalk.com/grid/last";
 
 /// Based on the above `KeyTypeId` we need to generate a pallet-specific crypto type wrappers.
 /// We can use from supported crypto kinds (`sr25519`, `ed25519` and `ecdsa`) and augment
@@ -155,9 +155,9 @@ pub mod pallet {
 	impl<T: Config> Pallet<T> {
 
         #[pallet::weight(10000)]
-		pub fn submit_mini_remote_block(origin: OriginFor<T>,  block: u32, devices: u32, address: Vec<u8>, power: u32) -> DispatchResult {
+		pub fn submit_mini_remote_block(origin: OriginFor<T>, address: Vec<u8>, energyacum: Vec<u8>) -> DispatchResult {
 			let who = ensure_signed(origin)?;
-			Self::set_remote_block(block,devices,address.clone(),power);
+			Self::set_remote_block(address.clone(),energyacum.clone());
 			Ok(())
 		}
 	}
@@ -176,7 +176,7 @@ pub mod pallet {
 		_,
 		Blake2_128Concat,
 		Vec<u8>,
-		u32,
+		Vec<u8>,
 		OptionQuery,
 	>;
 
@@ -204,9 +204,7 @@ pub mod pallet {
 
 impl<T: Config> Pallet<T> {
 
-    fn set_remote_block(block: u32, devices: u32,address: Vec<u8>,power: u32) {
-        RemoteBlock::<T>::put(block);
-        Devices::<T>::put(devices);
+    fn set_remote_block(address: Vec<u8>,power: Vec<u8>) {
 		TransactionsPerAddress::<T>::insert(address,power);
     }
 
@@ -282,52 +280,74 @@ impl<T: Config> Pallet<T> {
 			)
 		}
 
-		let block = match Self::parse_block(body_str) {
-			Some(block) => Ok(block),
+		let voltage = match Self::parse_voltage(body_str) {
+			Some(voltage) => Ok(voltage),
 			None => {
-				log::warn!("Unable to extract block from the response: {:?}", body_str);
+				log::warn!("Unable to extract energy from the response: {:?}", body_str);
 				Err(http::Error::Unknown)
 			},
 		}?;
 
-		log::info!("Got block: {} ", block);
+		log::info!("Got voltage: {:?} ", voltage);
 
-        let devices = match Self::parse_devices(body_str) {
-			Some(devices) => Ok(devices),
+		let current = match Self::parse_current(body_str) {
+			Some(current) => Ok(current),
 			None => {
-				log::warn!("Unable to extract devices from the response: {:?}", body_str);
+				log::warn!("Unable to extract energy from the response: {:?}", body_str);
 				Err(http::Error::Unknown)
 			},
 		}?;
 
-		log::info!("Got devices: {} ", devices);
+		log::info!("Got current: {:?} ", current);
 
-		let address2 = match Self::parse_address(body_str) {
-			Some(address2) => Ok(address2),
+		let energy = match Self::parse_energy(body_str) {
+			Some(energy) => Ok(energy),
 			None => {
-				log::warn!("Unable to extract address from the response: {:?}", body_str);
+				log::warn!("Unable to extract energy from the response: {:?}", body_str);
 				Err(http::Error::Unknown)
 			},
 		}?;
 
-		log::info!("Got address: {:?} ", address2);
+		log::info!("Got energy: {:?} ", energy);
 
-		let power = match Self::parse_power(body_str) {
-			Some(power) => Ok(power),
+
+        let gridcode = match Self::parse_gridcode(body_str) {
+			Some(gridcode) => Ok(gridcode),
 			None => {
-				log::warn!("Unable to extract power from the response: {:?}", body_str);
+				log::warn!("Unable to extract gridcode from the response: {:?}", body_str);
 				Err(http::Error::Unknown)
 			},
 		}?;
 
-		log::info!("Got devices: {} ", power);
+		log::info!("Got gridcode: {:?} ", gridcode);
+
+		let datetime = match Self::parse_datetime(body_str) {
+			Some(datetime) => Ok(datetime),
+			None => {
+				log::warn!("Unable to extract datetime from the response: {:?}", body_str);
+				Err(http::Error::Unknown)
+			},
+		}?;
+
+		log::info!("Got datetime: {:?} ", datetime);
+
+		let energyacum2 = match Self::parse_energyacum(body_str) {
+			Some(energyacum2) => Ok(energyacum2),
+			None => {
+				log::warn!("Unable to extract energyacum from the response: {:?}", body_str);
+				Err(http::Error::Unknown)
+			},
+		}?;
+
+		log::info!("Got energyacum: {:?} ", energyacum2);
 
         let results = signer.send_signed_transaction(|_account| {
 			// Received price is wrapped into a call to `submit_price` public function of this
 			// pallet. This means that the transaction, when executed, will simply call that
 			// function passing `price` as an argument.
-			let address = address2.clone();
-			Call::submit_mini_remote_block { block,devices,address,power }
+			let address = gridcode.clone();
+			let energyacum = energyacum2.clone();
+			Call::submit_mini_remote_block { address,energyacum }
 		});
 
 		for (acc, res) in &results {
@@ -341,43 +361,91 @@ impl<T: Config> Pallet<T> {
 		Ok(())
 	}
 
-    fn parse_block(data_str: &str) -> Option<u32> {
+    fn parse_voltage(data_str: &str) -> Option<Vec<u8>> {
 		let val = lite_json::parse_json(data_str);
-		let block = match val.ok()? {
+		let voltage = match val.ok()? {
 			JsonValue::Object(obj) => {
-				let (_, v) = obj.into_iter().find(|(k, _)| k.iter().copied().eq("block".chars()))?;
+				let (_, v) = obj.into_iter().find(|(k, _)| k.iter().copied().eq("voltage".chars()))?;
 				match v {
-					JsonValue::Number(number) => number,
+					JsonValue::String(value) => value,
 					_ => return None,
 				}
 			},
 			_ => return None,
 		};
 
-		Some(block.integer as u32)
+		let str_hex: Vec<u8> = voltage.iter().map(|c| *c as u8).collect::<Vec<_>>();
+		log::info!("offchain_worker - str_hex {:?}", str_hex.clone());
+		//let str2 = hex::decode(str_hex.clone()).ok()?;
+
+		Some(str_hex)
 	}
 
-    fn parse_devices(data_str: &str) -> Option<u32> {
+	fn parse_current(data_str: &str) -> Option<Vec<u8>> {
+		let val = lite_json::parse_json(data_str);
+		let current = match val.ok()? {
+			JsonValue::Object(obj) => {
+				let (_, v) = obj.into_iter().find(|(k, _)| k.iter().copied().eq("current".chars()))?;
+				match v {
+					JsonValue::String(value) => value,
+					_ => return None,
+				}
+			},
+			_ => return None,
+		};
+
+		let str_hex: Vec<u8> = current.iter().map(|c| *c as u8).collect::<Vec<_>>();
+		log::info!("offchain_worker - str_hex {:?}", str_hex.clone());
+		//let str2 = hex::decode(str_hex.clone()).ok()?;
+
+		Some(str_hex)
+	}
+
+	fn parse_energy(data_str: &str) -> Option<Vec<u8>> {
+		let val = lite_json::parse_json(data_str);
+		let energy = match val.ok()? {
+			JsonValue::Object(obj) => {
+				let (_, v) = obj.into_iter().find(|(k, _)| k.iter().copied().eq("energy".chars()))?;
+				match v {
+					JsonValue::String(value) => value,
+					_ => return None,
+				}
+			},
+			_ => return None,
+		};
+
+		let str_hex: Vec<u8> = energy.iter().map(|c| *c as u8).collect::<Vec<_>>();
+		log::info!("offchain_worker - str_hex {:?}", str_hex.clone());
+		//let str2 = hex::decode(str_hex.clone()).ok()?;
+
+		Some(str_hex)
+	}
+
+    fn parse_gridcode(data_str: &str) -> Option<Vec<u8>> {
 		let val = lite_json::parse_json(data_str);
 		let devices = match val.ok()? {
 			JsonValue::Object(obj) => {
-				let (_, v) = obj.into_iter().find(|(k, _)| k.iter().copied().eq("devices".chars()))?;
+				let (_, v) = obj.into_iter().find(|(k, _)| k.iter().copied().eq("grid-code".chars()))?;
 				match v {
-					JsonValue::Number(number) => number,
+					JsonValue::String(value) => value,
 					_ => return None,
 				}
 			},
 			_ => return None,
 		};
 
-		Some(devices.integer as u32)
+		let str_hex: Vec<u8> = devices.iter().map(|c| *c as u8).collect::<Vec<_>>();
+		log::info!("offchain_worker - str_hex {:?}", str_hex.clone());
+		//let str2 = hex::decode(str_hex.clone()).ok()?;
+
+		Some(str_hex)
 	}
 
-	fn parse_address(data_str: &str) -> Option<Vec<u8>> {
+	fn parse_datetime(data_str: &str) -> Option<Vec<u8>> {
 		let val = lite_json::parse_json(data_str);
 		let address = match val.ok()? {
 			JsonValue::Object(obj) => {
-				let (_, v) = obj.into_iter().find(|(k, _)| k.iter().copied().eq("address".chars()))?;
+				let (_, v) = obj.into_iter().find(|(k, _)| k.iter().copied().eq("datetime".chars()))?;
 				match v {
 					JsonValue::String(value) => value,
 					_ => return None,
@@ -393,20 +461,23 @@ impl<T: Config> Pallet<T> {
 		Some(str_hex)
 	}
 
-	fn parse_power(data_str: &str) -> Option<u32> {
+	fn parse_energyacum(data_str: &str) -> Option<Vec<u8>> {
 		let val = lite_json::parse_json(data_str);
 		let power = match val.ok()? {
 			JsonValue::Object(obj) => {
-				let (_, v) = obj.into_iter().find(|(k, _)| k.iter().copied().eq("power".chars()))?;
+				let (_, v) = obj.into_iter().find(|(k, _)| k.iter().copied().eq("energy-acum".chars()))?;
 				match v {
-					JsonValue::Number(number) => number,
+					JsonValue::String(value) => value,
 					_ => return None,
 				}
 			},
 			_ => return None,
 		};
 
-		Some(power.integer as u32)
-	}
+		let str_hex: Vec<u8> = power.iter().map(|c| *c as u8).collect::<Vec<_>>();
+		log::info!("offchain_worker - str_hex {:?}", str_hex.clone());
+		//let str2 = hex::decode(str_hex.clone()).ok()?;
 
+		Some(str_hex)
+	}
 }

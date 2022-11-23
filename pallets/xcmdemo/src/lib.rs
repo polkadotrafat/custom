@@ -66,13 +66,13 @@ pub mod pallet {
 	impl<T: Config> Pallet<T> {
 		#[pallet::weight(10_000)]
 		pub fn check_data(who: OriginFor<T>, id: Vec<u8>) -> DispatchResult {
-			let current_val: u32 = pallet_ocw::Pallet::<T>::get_power_per_address(id.clone()).unwrap();
-			let prev_val: u32 = Self::get_previous_power(id.clone()).unwrap();
-			let diff: u32 = current_val - prev_val;
-			let num: u32 = Self::get_num_of_tokens(diff.clone());
-			let incr: u32 = num * 1000u32;
-			Self::mint_token(num);
-			PrevTransactions::<T>::insert(id.clone(),incr);
+			//let current_val: u32 = pallet_ocw::Pallet::<T>::get_power_per_address(id.clone()).unwrap();
+			//let prev_val: u32 = Self::get_previous_power(id.clone()).unwrap();
+			//let diff: u32 = current_val - prev_val;
+			//let num: u32 = Self::get_num_of_tokens(diff.clone());
+			//let incr: u32 = num * 1000u32;
+			//Self::mint_token(num);
+			//PrevTransactions::<T>::insert(id.clone(),incr);
 
 			Ok(())
 		}
